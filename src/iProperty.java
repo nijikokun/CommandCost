@@ -1,18 +1,19 @@
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.util.logging.Logger;
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.PrintStream;
+import java.io.OutputStreamWriter;
 import java.util.ArrayList;
-import java.util.ConcurrentModificationException;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -24,6 +25,7 @@ import java.util.Map;
  * @version 1.0.4, %G%
  */
 public final class iProperty {
+
 	private static final Logger log = Logger.getLogger("Minecraft");
 	private String fileName;
 	private List<String> lines = new ArrayList<String>();
@@ -42,7 +44,7 @@ public final class iProperty {
 			try {
 				load();
 			} catch (IOException ex) {
-				log.severe("[propertiesFile] Unable to load " + fileName + "!");
+				log.severe("[PropertiesFile] Unable to load " + fileName + "!");
 			}
 		} else {
 			save();
@@ -61,7 +63,8 @@ public final class iProperty {
 		String line;
 
 		// Clear the file & unwritten properties
-		lines.clear(); props.clear();
+		lines.clear();
+		props.clear();
 
 		// Begin reading the file.
 		while ((line = reader.readLine()) != null) {
@@ -150,8 +153,6 @@ public final class iProperty {
 				}
 			}
 
-			//line.replaceAll("(?<!\\\\)&(?>!(\\s|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z))", "§");
-
 			// Short-circuit if no escape chars found.
 			if (!needsEscape) {
 				lines.add(line);
@@ -213,71 +214,77 @@ public final class iProperty {
 	 * Writes out the <code>key=value</code> properties that were changed into
 	 * a .[properties] file in UTF8.
 	 *
-	 * @see #load()
+	 * @see #save()
+	 * @throws IOException
 	 */
-    public void save() {
-        OutputStream os = null;
+	public void save() {
+		BufferedWriter os = null;
+
+		try {
+			try {
+				os = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(fileName), "UTF8"));
+			} catch (UnsupportedEncodingException ex) {
+				log.severe("[PropertiesFile] Unable to write to file " + fileName + "!");
+			}
+
+		} catch (FileNotFoundException ex) {
+			log.severe("[PropertiesFile] Unable to find file " + fileName + "!");
+		}
+
+
+		// Keep track of properties that were set
+		List<String> usedProps = new ArrayList<String>();
 
         try {
-            os = new FileOutputStream(this.fileName);
-        } catch (FileNotFoundException ex) {
-             log.severe("[propertiesFile] Unable to open " + fileName + "!");
-        }
-
-        PrintStream ps = null;
-        try {
-            ps = new PrintStream(os, true, "UTF-8");
-        } catch (UnsupportedEncodingException ex) {
-             log.severe("[propertiesFile] Unable to write to " + fileName + "!");
-        }
-
-        // Keep track of properties that were set
-        List<String> usedProps = new ArrayList<String>();
-
-        for (String line : this.lines) {
-            if (line.trim().length() == 0) {
-                ps.println(line);
-                continue;
-            }
-
-            if (line.charAt(0) == '#') {
-                ps.println(line);
-                continue;
-            }
-
-            if (line.contains("=")) {
-                int delimPosition = line.indexOf('=');
-                String key = line.substring(0, delimPosition).trim();
-
-                if (this.props.containsKey(key)) {
-                    String value = this.props.get(key);
-                    ps.println(key + "=" + value);
-                    usedProps.add(key);
-                } else {
-                    ps.println(line);
+            for (String line : this.lines) {
+                if (line.trim().length() == 0) {
+                    os.write(line); os.newLine();
+                    continue;
                 }
-            } else {
-                ps.println(line);
+
+                if (line.charAt(0) == '#') {
+                    os.write(line); os.newLine();
+                    continue;
+                }
+
+                if (line.contains("=")) {
+                    int delimPosition = line.indexOf('=');
+                    String key = line.substring(0, delimPosition).trim();
+
+                    if (this.props.containsKey(key)) {
+                        String value = this.props.get(key);
+                        os.write(key + "=" + value); os.newLine();
+                        usedProps.add(key);
+                    } else {
+                        os.write(line); os.newLine();
+                    }
+                } else {
+                    os.write(line); os.newLine();
+                }
             }
-        }
 
-        // Add any new properties
-        for (Map.Entry<String, String> entry : this.props.entrySet()) {
-            if (!usedProps.contains(entry.getKey())) {
-                ps.println(entry.getKey() + "=" + entry.getValue());
+            // Add any new properties
+            for (Map.Entry<String, String> entry : this.props.entrySet()) {
+                if (!usedProps.contains(entry.getKey())) {
+                    os.write(entry.getKey() + "=" + entry.getValue()); os.newLine();
+                }
             }
-        }
 
-        // Exit that stream
-        ps.close();
-
-        // Reload
-        try {
-			props.clear(); lines.clear(); this.load();
+            // Exit that stream
+            os.close();
         } catch (IOException ex) {
-            log.severe("[propertiesFile] Unable to load " + fileName + "!");
+            log.severe("[PropertiesFile] Unable to write to file " + fileName + "!");
         }
-    }
+
+		// Reload
+		try {
+			lines.clear();
+			props.clear();
+			this.load();
+		} catch (IOException ex) {
+			log.severe("[propertiesFile] Unable to load " + fileName + "!");
+		}
+	}
 
 	/**
 	 * Returns a Map of all <code>key=value</code> properties in the file as <code>&lt;key (java.lang.String), value (java.lang.String)></code>
@@ -286,7 +293,7 @@ public final class iProperty {
 	 * <blockquote><pre>
 	 * PropertiesFile settings = new PropertiesFile("settings.properties");
 	 * Map<String, String> mappedSettings;
-	 * 
+	 *
 	 * try {
 	 * 	 mappedSettings = settings.returnMap();
 	 * } catch (Exception ex) {
@@ -402,37 +409,35 @@ public final class iProperty {
 			changed = true;
 		}
 
-		try {
-			for (int i = 0; i < this.lines.size(); i++) {
-				String line = this.lines.get(i);
+        // Use an iterator to prevent ConcurrentModification exceptions
+        Iterator<String> it = this.lines.listIterator();
+        while (it.hasNext()) {
+            String line = it.next();
 
-				if (line.trim().length() == 0) {
-					continue;
-				}
+            if (line.trim().length() == 0) {
+                continue;
+            }
 
-				if (line.charAt(0) == '#') {
-					continue;
-				}
+            if (line.charAt(0) == '#') {
+                continue;
+            }
 
-				if (line.contains("=")) {
-					int delimPosition = line.indexOf('=');
-					String key = line.substring(0, delimPosition).trim();
+            if (line.contains("=")) {
+                int delimPosition = line.indexOf('=');
+                String key = line.substring(0, delimPosition).trim();
 
-					if (key.equals(var)) {
-						this.lines.remove(i);
-						changed = true;
-					}
-				} else {
-					continue;
-				}
-			}
-		} catch (ConcurrentModificationException concEx) {
-			removeKey(var); return;
-		}
+                if (key.equals(var)) {
+                    it.remove();
+                    changed = true;
+                }
+            } else {
+                continue;
+            }
+        }
 
 		// Save on change
 		if (changed) {
-				save();
+			save();
 		}
 	}
 
